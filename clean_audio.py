@@ -24,7 +24,10 @@ import platform
 # on windows update the environment so pydub can find the executables for loading
 # mp3 audio files.
 if platform.system() == 'Windows':
-    BIN_DIR = path.join(path.dirname(path.realpath(__file__)), 'bin', 'win', 'bin')
+    BIN_DIR = path.join(path.dirname(path.realpath(__file__)), 'bin', 'win')
+    os.environ['PATH'] = BIN_DIR + ";" + os.environ['PATH']
+elif platform.system() == 'Darwin':
+    BIN_DIR = path.join(path.dirname(path.realpath(__file__)), 'bin', 'osx')
     os.environ['PATH'] = BIN_DIR + ";" + os.environ['PATH']
 
 from pydub import AudioSegment
@@ -175,7 +178,7 @@ class CleanAudio(object):
 
 def main():
     """ Main script entry point """
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Module for cleaning audio tracks intended for Anki')
     parser.add_argument('-i', '--input',
                         help='Input source, may be single file, directory or a glob',
                         dest='input')
@@ -186,6 +189,11 @@ def main():
                         help='Dump csv list of rms values for the input file to stdout',
                         dest='dump_rms', action='store_true')
     args = parser.parse_args()
+
+    args = parser.parse_args()
+    if (args.input is None or args.output is None):
+        parser.error('Input and output directories must be specified.')
+
     CleanAudio(args).run()
 
 if __name__ == "__main__":
