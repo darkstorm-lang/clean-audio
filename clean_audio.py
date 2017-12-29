@@ -20,6 +20,11 @@ import os
 import os.path as path
 import sys
 import platform
+import sqlite3
+import json
+import hashlib
+import tempfile
+import shutil
 
 # on windows update the environment so pydub can find the executables for loading
 # mp3 audio files.
@@ -33,6 +38,104 @@ elif platform.system() == 'Darwin':
 from pydub import AudioSegment
 from pydub.effects import normalize
 from pydub.utils import db_to_float, ratio_to_db
+
+def is_audio_extension(ext):
+    return ext in ['.wav', '.mp3']
+
+def get_file_sha1(filename):
+    sha1 = hashlib.sha1()
+    with open(filename, 'rb') as infile:
+        data = infile.read()
+        sha1.update(data)
+    return sha1.hexdigest()
+
+
+class AudioFiles(object):
+    def __init__(self, directory):
+        self._dir = directory
+        self._info = self.load_info_file()
+        if self._info is None:
+            self._info = {'files':{}}
+        self.audio_files = self.get_new_audio_files()
+
+    def info_file_path(self):
+        return path.join(self._dir, 'clean_audio.json')
+
+    def load_info_file(self):
+        info_path = self.info_file_path()
+        if path.exists(info_path):
+            with open(info_path, 'rt') as info:
+                info = json.load(info)
+                return info
+        return None
+
+    def save_info_file(self):
+        self.update_hashes()
+        with open(self.info_file_path(), "w") as info_file:
+            json.dump(self._info, info_file)
+
+    def update_hashes(self):
+        for file in self.audio_files:
+            self._info['files'][path.basename(file)]['sha1'] = get_file_sha1(file)
+
+    def get_new_audio_files(self):
+        audio_files = []
+        for root, _, files in os.walk(self._dir):
+            for filename in files:
+                name = path.join(root, filename)
+                if is_audio_extension(path.splitext(name)[1]):
+                    update = True
+                    basename = path.basename(filename)
+                    new_sha1 = get_file_sha1(name)
+                    if basename in self._info['files']:
+                        old_sha1 = self._info['files'][basename]['sha1']
+                        if old_sha1 == new_sha1:
+                            update = False
+                        else:
+                            self._info['files'][basename]['sha1'] = new_sha1
+                    else:
+                        self._info['files'][basename] = {'sha1':new_sha1}
+
+                    if update:
+                        audio_files.append(name)
+
+        return audio_files
+
+class AnkiProfile(object):
+    def __init__(self, root, name):
+        self._root = root
+        self.name = name
+        self._dir = path.join(root, name, 'collection.media')
+        self._audio_files = AudioFiles(self._dir)
+
+    def directory(self):
+        return self._dir
+
+    def save_info_file(self):
+        self._audio_files.save_info_file()
+
+    def get_new_audio_files(self):
+        return self._audio_files.audio_files
+
+class Anki(object):
+    """ Access to anki data """
+    def __init__(self):
+        self._anki_dir = None
+        self._profiles = []
+
+        if platform.system() == 'Windows':
+            self._anki_dir = path.join(os.getenv('APPDATA'), 'Anki2')
+        else:
+            self._anki_dir = path.join(os.getenv('HOME'), 'Anki2')
+
+        connect = sqlite3.connect(path.join(self._anki_dir, 'prefs.db'))
+        for row in connect.execute('SELECT * FROM profiles'):
+            name = row[0]
+            if name != '_global':
+                self._profiles.append(AnkiProfile(self._anki_dir, name))
+
+    def profiles(self):
+        return self._profiles;
 
 #-------------------------------------------------------------------------------------------------
 # Class
@@ -60,6 +163,8 @@ class CleanAudio(object):
             for ifile in allfiles:
                 if path.isfile(ifile) and CleanAudio.is_audio_file(ifile):
                     self._input_files.append(ifile)
+        elif isinstance(args.input, list):
+            self._input_files = args.input
         elif path.exists(args.input):
             if path.isfile(args.input):
                 self._input_files.append(args.input)
@@ -179,6 +284,9 @@ class CleanAudio(object):
 def main():
     """ Main script entry point """
     parser = argparse.ArgumentParser(description='Module for cleaning audio tracks intended for Anki')
+    parser.add_argument('-a', '--anki',
+                        help='Update Anki media directory',
+                        dest='anki', action='store_true')
     parser.add_argument('-i', '--input',
                         help='Input source, may be single file, directory or a glob',
                         dest='input')
@@ -190,11 +298,55 @@ def main():
                         dest='dump_rms', action='store_true')
     args = parser.parse_args()
 
-    args = parser.parse_args()
-    if (args.input is None or args.output is None):
-        parser.error('Input and output directories must be specified.')
+    if args.anki:
+        anki = Anki()
+        profile = None
+        if len(anki.profiles()) > 1:
+            cur = 1
+            for profile in anki.profiles():
+                print(str(cur) + ": " + profile.name)
+                cur += 1
+            sys.stdout.write('Select profile: ')
+            choice = None
+            while choice is None:
+                try:
+                    choice = int(raw_input('> '))
+                    choice -= 1
+                    if choice < 0 or choice >= len(anki.profiles()):
+                        choice = None
+                except ValueError:
+                    choice = None
 
-    CleanAudio(args).run()
+                if choice is None:
+                    print("Invalid option")
+            profile = anki.profiles()[choice]
+        else:
+            profile = anki.profiles()[0]
+
+        files_to_update = profile.get_new_audio_files()
+
+        if files_to_update:
+            tempdir = tempfile.mkdtemp()
+            args.input = files_to_update
+            args.output = tempdir
+            CleanAudio(args).run()
+            # copy all files back to the media directory
+            for root, _, files in os.walk(tempdir):
+                for filename in files:
+                    src = path.join(root, filename)
+                    dst = path.join(profile.directory(), filename)
+                    os.unlink(dst)
+                    shutil.copyfile(src, dst)
+                    os.unlink(src)
+            profile.save_info_file()
+        else:
+            print('Nothing needs to be done.')
+
+    elif (args.input is None or args.output is None):
+        parser.error('Input and output directories must be specified.')
+    else:
+        CleanAudio(args).run()
+
 
 if __name__ == "__main__":
     main()
