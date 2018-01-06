@@ -31,9 +31,10 @@ import shutil
 if platform.system() == 'Windows':
     BIN_DIR = path.join(path.dirname(path.realpath(__file__)), 'bin', 'win')
     os.environ['PATH'] = BIN_DIR + ";" + os.environ['PATH']
-elif platform.system() == 'Darwin':
-    BIN_DIR = path.join(path.dirname(path.realpath(__file__)), 'bin', 'osx')
-    os.environ['PATH'] = BIN_DIR + ";" + os.environ['PATH']
+# elif platform.system() == 'Darwin':
+#     BIN_DIR = path.join(path.dirname(path.realpath(__file__)), 'bin', 'osx')
+#     print(os.environ)
+#     os.environ['PATH'] = BIN_DIR + ";" + os.environ['PATH']
 
 from pydub import AudioSegment
 from pydub.effects import normalize
@@ -125,8 +126,10 @@ class Anki(object):
 
         if platform.system() == 'Windows':
             self._anki_dir = path.join(os.getenv('APPDATA'), 'Anki2')
+        elif platform.system() == 'Darwin':
+            self._anki_dir = path.join(os.getenv('HOME'), 'Library', 'Application Support', 'Anki2')
         else:
-            self._anki_dir = path.join(os.getenv('HOME'), 'Anki2')
+            print('Unknown platform "{0}" aborting'.format(platform.system()))
 
         connect = sqlite3.connect(path.join(self._anki_dir, 'prefs.db'))
         for row in connect.execute('SELECT * FROM profiles'):
@@ -135,7 +138,7 @@ class Anki(object):
                 self._profiles.append(AnkiProfile(self._anki_dir, name))
 
     def profiles(self):
-        return self._profiles;
+        return self._profiles
 
 #-------------------------------------------------------------------------------------------------
 # Class
@@ -287,6 +290,9 @@ def main():
     parser.add_argument('-a', '--anki',
                         help='Update Anki media directory',
                         dest='anki', action='store_true')
+    parser.add_argument('-s', '--simulate',
+                        help='Show what would be processed but don\'t acutally do anything',
+                        dest='simulate', action='store_true')
     parser.add_argument('-i', '--input',
                         help='Input source, may be single file, directory or a glob',
                         dest='input')
@@ -326,19 +332,23 @@ def main():
         files_to_update = profile.get_new_audio_files()
 
         if files_to_update:
-            tempdir = tempfile.mkdtemp()
-            args.input = files_to_update
-            args.output = tempdir
-            CleanAudio(args).run()
-            # copy all files back to the media directory
-            for root, _, files in os.walk(tempdir):
-                for filename in files:
-                    src = path.join(root, filename)
-                    dst = path.join(profile.directory(), filename)
-                    os.unlink(dst)
-                    shutil.copyfile(src, dst)
-                    os.unlink(src)
-            profile.save_info_file()
+            if args.simulate:
+                for filename in files_to_update:
+                    print(filename)
+            else:
+                tempdir = tempfile.mkdtemp()
+                args.input = files_to_update
+                args.output = tempdir
+                CleanAudio(args).run()
+                # copy all files back to the media directory
+                for root, _, files in os.walk(tempdir):
+                    for filename in files:
+                        src = path.join(root, filename)
+                        dst = path.join(profile.directory(), filename)
+                        os.unlink(dst)
+                        shutil.copyfile(src, dst)
+                        os.unlink(src)
+                profile.save_info_file()
         else:
             print('Nothing needs to be done.')
 
