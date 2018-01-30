@@ -41,7 +41,7 @@ from pydub.effects import normalize
 from pydub.utils import db_to_float, ratio_to_db
 
 def is_audio_extension(ext):
-    return ext in ['.wav', '.mp3']
+    return ext in ['.wav', '.mp3', '.3gp']
 
 def get_file_sha1(filename):
     sha1 = hashlib.sha1()
@@ -67,7 +67,13 @@ class AudioFiles(object):
         if path.exists(info_path):
             with open(info_path, 'rt') as info:
                 info = json.load(info)
+                #tmp = {}
+                #for key, val in info['files'].iteritems():
+                #    if '3gp' not in key:
+                #        tmp[key] = val
+                #info['files'] = tmp
                 return info
+
         return None
 
     def save_info_file(self):
@@ -184,7 +190,7 @@ class CleanAudio(object):
     @staticmethod
     def is_audio_file(filename):
         ext = path.splitext(filename)[1]
-        return ext in ('.mp3', '.wav')
+        return ext in ('.mp3', '.wav', '.3gp')
 
     def trim_silence(self, seg, trim):
         seg_len = len(seg)
@@ -259,15 +265,25 @@ class CleanAudio(object):
 
     def run(self):
         for ifile in self._input_files:
+            bitrate=None
             ext = path.splitext(ifile)[1][1:]
             audio = None
             if ext == 'mp3':
                 audio = AudioSegment.from_mp3(ifile)
             elif ext == 'wav':
                 audio = AudioSegment.from_wav(ifile)
+            elif ext == '3gp':
+                audio = AudioSegment.from_file(ifile, '3gp')
+                bitrate = 8000
             else:
                 sys.stderr.write('Unrecognised extension - %s\n' % ext)
                 continue
+
+            # reduce to mono, no need for stereo
+            audio = audio.set_channels(1)
+
+            if bitrate != None:
+                audio = audio.set_frame_rate(bitrate)
 
             sys.stdout.write('Processing %s...' % path.basename(ifile))
             if self._dump_rms:
