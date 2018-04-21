@@ -41,7 +41,7 @@ from pydub.effects import normalize
 from pydub.utils import db_to_float, ratio_to_db
 
 def is_audio_extension(ext):
-    return ext in ['.wav', '.mp3']
+    return ext in ['.wav', '.mp3', '.3gp']
 
 def get_file_sha1(filename):
     sha1 = hashlib.sha1()
@@ -184,7 +184,7 @@ class CleanAudio(object):
     @staticmethod
     def is_audio_file(filename):
         ext = path.splitext(filename)[1]
-        return ext in ('.mp3', '.wav')
+        return ext in ('.mp3', '.wav', '.3gp')
 
     def trim_silence(self, seg, trim):
         seg_len = len(seg)
@@ -265,6 +265,11 @@ class CleanAudio(object):
                 audio = AudioSegment.from_mp3(ifile)
             elif ext == 'wav':
                 audio = AudioSegment.from_wav(ifile)
+            elif ext == '3gp':
+                print('Cannot convert .3pg. Ignoring ' + ifile)
+                continue
+                # this loads the file correctly but will fail on export below on os x at least
+                #audio = AudioSegment.from_file(ifile, '3gp', None)
             else:
                 sys.stderr.write('Unrecognised extension - %s\n' % ext)
                 continue
@@ -341,10 +346,10 @@ def main():
                 args.output = tempdir
                 CleanAudio(args).run()
                 # copy all files back to the media directory
-                for root, _, files in os.walk(tempdir):
+                for root, _, files in os.walk(unicode(tempdir)):
                     for filename in files:
                         src = path.join(root, filename)
-                        dst = path.join(profile.directory(), filename)
+                        dst = path.join(unicode(profile.directory()), filename)
                         os.unlink(dst)
                         shutil.copyfile(src, dst)
                         os.unlink(src)
