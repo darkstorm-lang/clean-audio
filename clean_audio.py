@@ -67,7 +67,13 @@ class AudioFiles(object):
         if path.exists(info_path):
             with open(info_path, 'rt') as info:
                 info = json.load(info)
+                #tmp = {}
+                #for key, val in info['files'].iteritems():
+                #    if '3gp' not in key:
+                #        tmp[key] = val
+                #info['files'] = tmp
                 return info
+
         return None
 
     def save_info_file(self):
@@ -259,6 +265,7 @@ class CleanAudio(object):
 
     def run(self):
         for ifile in self._input_files:
+            bitrate=None
             ext = path.splitext(ifile)[1][1:]
             audio = None
             if ext == 'mp3':
@@ -269,10 +276,17 @@ class CleanAudio(object):
                 print('Cannot convert .3pg. Ignoring ' + ifile)
                 continue
                 # this loads the file correctly but will fail on export below on os x at least
-                #audio = AudioSegment.from_file(ifile, '3gp', None)
+                #audio = AudioSegment.from_file(ifile, '3gp')
+                #bitrate = 8000
             else:
                 sys.stderr.write('Unrecognised extension - %s\n' % ext)
                 continue
+
+            # reduce to mono, no need for stereo
+            audio = audio.set_channels(1)
+
+            if bitrate != None:
+                audio = audio.set_frame_rate(bitrate)
 
             sys.stdout.write('Processing %s...' % path.basename(ifile))
             if self._dump_rms:
