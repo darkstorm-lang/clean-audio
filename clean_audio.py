@@ -137,7 +137,7 @@ class Anki(object):
         else:
             print('Unknown platform "{0}" aborting'.format(platform.system()))
 
-        connect = sqlite3.connect(path.join(self._anki_dir, 'prefs.db'))
+        connect = sqlite3.connect(path.join(self._anki_dir, 'prefs21.db'))
         for row in connect.execute('SELECT * FROM profiles'):
             name = row[0]
             if name != '_global':
@@ -209,7 +209,7 @@ class CleanAudio(object):
         noise_peak = None
 
         # find silence and add start and end indicies to the to_cut list
-        indices = range(seg_len / self._silence_slice)
+        indices = range(int(seg_len / self._silence_slice))
         if trim == CleanAudio.TRIM_END:
             indices = reversed(indices)
 
@@ -360,10 +360,10 @@ def main():
                 args.output = tempdir
                 CleanAudio(args).run()
                 # copy all files back to the media directory
-                for root, _, files in os.walk(unicode(tempdir)):
+                for root, _, files in os.walk(tempdir):
                     for filename in files:
                         src = path.join(root, filename)
-                        dst = path.join(unicode(profile.directory()), filename)
+                        dst = path.join(profile.directory(), filename)
                         os.unlink(dst)
                         shutil.copyfile(src, dst)
                         os.unlink(src)
