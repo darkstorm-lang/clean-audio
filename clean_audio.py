@@ -1,47 +1,53 @@
 #!/bin/python
 #pylint: disable=too-few-public-methods, missing-docstring, C0413
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Darkstorm Library
 # Copyright (C) 2017 Martin Slater
 # Created : Tuesday, 31 October 2017 12:41:28 PM
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 """
 Module for cleaning audio tracks intended for anki.
 See README.md for more details and clean_audio.py --help for usage instructions.
 """
 
-#-------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------
 # # Imports
-#-------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------
 from __future__ import absolute_import, print_function
+
 import argparse
 import glob
+import hashlib
+import json
+import math
 import os
 import os.path as path
-import sys
 import platform
-import sqlite3
-import json
-import hashlib
-import tempfile
 import shutil
+import sqlite3
+import sys
+import tempfile
+
+from pydub import AudioSegment
+from pydub.effects import normalize
+from pydub.utils import db_to_float, ratio_to_db
 
 # on windows update the environment so pydub can find the executables for loading
 # mp3 audio files.
 if platform.system() == 'Windows':
-    BIN_DIR = path.join(path.dirname(path.realpath(__file__)), 'bin', 'win')
+    BIN_DIR = path.join(path.dirname(path.realpath(__file__)),
+                        'bin', 'win')  # , 'usr', 'bin')
+    print(BIN_DIR)
     os.environ['PATH'] = BIN_DIR + ";" + os.environ['PATH']
 # elif platform.system() == 'Darwin':
 #     BIN_DIR = path.join(path.dirname(path.realpath(__file__)), 'bin', 'osx')
 #     print(os.environ)
 #     os.environ['PATH'] = BIN_DIR + ";" + os.environ['PATH']
 
-from pydub import AudioSegment
-from pydub.effects import normalize
-from pydub.utils import db_to_float, ratio_to_db
 
 def is_audio_extension(ext):
     return ext in ['.wav', '.mp3', '.3gp']
+
 
 def get_file_sha1(filename):
     sha1 = hashlib.sha1()
@@ -56,7 +62,7 @@ class AudioFiles(object):
         self._dir = directory
         self._info = self.load_info_file()
         if self._info is None:
-            self._info = {'files':{}}
+            self._info = {'files': {}}
         self.audio_files = self.get_new_audio_files()
 
     def info_file_path(self):
@@ -68,7 +74,7 @@ class AudioFiles(object):
             with open(info_path, 'rt') as info:
                 info = json.load(info)
                 #tmp = {}
-                #for key, val in info['files'].iteritems():
+                # for key, val in info['files'].iteritems():
                 #    if '3gp' not in key:
                 #        tmp[key] = val
                 #info['files'] = tmp
@@ -83,7 +89,8 @@ class AudioFiles(object):
 
     def update_hashes(self):
         for file in self.audio_files:
-            self._info['files'][path.basename(file)]['sha1'] = get_file_sha1(file)
+            self._info['files'][path.basename(
+                file)]['sha1'] = get_file_sha1(file)
 
     def get_new_audio_files(self):
         audio_files = []
@@ -101,12 +108,13 @@ class AudioFiles(object):
                         else:
                             self._info['files'][basename]['sha1'] = new_sha1
                     else:
-                        self._info['files'][basename] = {'sha1':new_sha1}
+                        self._info['files'][basename] = {'sha1': new_sha1}
 
                     if update:
                         audio_files.append(name)
 
         return audio_files
+
 
 class AnkiProfile(object):
     def __init__(self, root, name):
@@ -124,8 +132,10 @@ class AnkiProfile(object):
     def get_new_audio_files(self):
         return self._audio_files.audio_files
 
+
 class Anki(object):
     """ Access to anki data """
+
     def __init__(self):
         self._anki_dir = None
         self._profiles = []
@@ -133,7 +143,8 @@ class Anki(object):
         if platform.system() == 'Windows':
             self._anki_dir = path.join(os.getenv('APPDATA'), 'Anki2')
         elif platform.system() == 'Darwin':
-            self._anki_dir = path.join(os.getenv('HOME'), 'Library', 'Application Support', 'Anki2')
+            self._anki_dir = path.join(
+                os.getenv('HOME'), 'Library', 'Application Support', 'Anki2')
         else:
             print('Unknown platform "{0}" aborting'.format(platform.system()))
 
@@ -146,9 +157,11 @@ class Anki(object):
     def profiles(self):
         return self._profiles
 
-#-------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------
 # Class
-#-------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------
+
+
 class CleanAudio(object):
     """ CleanAudio """
     TRIM_START = 0
@@ -164,7 +177,7 @@ class CleanAudio(object):
 
         self._burst_threshold = -20
         self._silence_threshold = -50
-        self._silence_slice = 10 # ms
+        self._silence_slice = 10  # ms
         self._dump_rms = args.dump_rms
 
         if '*' in args.input:
@@ -200,9 +213,12 @@ class CleanAudio(object):
             return []
 
         # convert silence threshold to a float value (so we can compare it to rms)
-        silence_thresh = db_to_float(self._silence_threshold) * seg.max_possible_amplitude
-        burst_thresh = db_to_float(self._burst_threshold) * seg.max_possible_amplitude
+        silence_thresh = db_to_float(
+            self._silence_threshold) * seg.max_possible_amplitude
+        burst_thresh = db_to_float(
+            self._burst_threshold) * seg.max_possible_amplitude
 
+        leading_ms = 250
         max_noise = 100
         end_extra_ms = 200
         noise_start = None
@@ -243,7 +259,8 @@ class CleanAudio(object):
 
         if noise_start is not None:
             if trim == CleanAudio.TRIM_START:
-                return seg[noise_start:]
+                start = math.max(noise_start - leading_ms, 0)
+                return seg[start:]
             end = noise_start + self._silence_slice + end_extra_ms
             if end > seg_len:
                 end = seg_len
@@ -255,17 +272,17 @@ class CleanAudio(object):
         seg_len = len(seg)
         for idx in range(seg_len - self._silence_slice):
             seg_slice = seg[idx:idx + self._silence_slice]
-            print('%s' % (ratio_to_db(float(seg_slice.rms) /seg.max_possible_amplitude)))
+            print('%s' % (ratio_to_db(float(seg_slice.rms) / seg.max_possible_amplitude)))
 
     def clean_audio(self, seg):
+        seg = normalize(seg, headroom=0.3)
         seg = self.trim_silence(seg, CleanAudio.TRIM_START)
         seg = self.trim_silence(seg, CleanAudio.TRIM_END)
-        seg = normalize(seg, headroom=0.3)
         return seg
 
     def run(self):
         for ifile in self._input_files:
-            bitrate=None
+            bitrate = None
             ext = path.splitext(ifile)[1][1:]
             audio = None
             if ext == 'mp3':
@@ -293,19 +310,22 @@ class CleanAudio(object):
                 self.dump_rms(audio)
             else:
                 audio = self.clean_audio(audio)
-                dst = path.abspath(path.join(self._output_dir, path.basename(ifile)))
+                dst = path.abspath(
+                    path.join(self._output_dir, path.basename(ifile)))
                 audio.export(dst, format=ext)
             sys.stdout.write('done\n')
         num = len(self._input_files)
         print('Processed %s %s' % (num, 'file' if num == 1 else 'files'))
 
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Main
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
 
 def main():
     """ Main script entry point """
-    parser = argparse.ArgumentParser(description='Module for cleaning audio tracks intended for Anki')
+    parser = argparse.ArgumentParser(
+        description='Module for cleaning audio tracks intended for Anki')
     parser.add_argument('-a', '--anki',
                         help='Update Anki media directory',
                         dest='anki', action='store_true')
