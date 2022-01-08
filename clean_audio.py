@@ -330,7 +330,7 @@ def main():
                         help='Update Anki media directory',
                         dest='anki', action='store_true')
     parser.add_argument('-s', '--simulate',
-                        help='Show what would be processed but don\'t acutally do anything',
+                        help='Show what would be processed but don\'t actually do anything',
                         dest='simulate', action='store_true')
     parser.add_argument('-i', '--input',
                         help='Input source, may be single file, directory or a glob',
