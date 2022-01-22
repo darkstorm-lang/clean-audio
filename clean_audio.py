@@ -27,6 +27,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+from enum import auto
 
 from pydub import AudioSegment
 from pydub.effects import normalize
@@ -46,7 +47,7 @@ if platform.system() == 'Windows':
 
 
 def is_audio_extension(ext):
-    return ext in ['.wav', '.mp3', '.3gp']
+    return ext in ['.wav', '.mp3', '.3gp', '.ogg']
 
 
 def get_file_sha1(filename):
@@ -203,7 +204,7 @@ class CleanAudio(object):
     @staticmethod
     def is_audio_file(filename):
         ext = path.splitext(filename)[1]
-        return ext in ('.mp3', '.wav', '.3gp')
+        return ext in ('.mp3', '.wav', '.3gp', '.ogg')
 
     def trim_silence(self, seg, trim):
         seg_len = len(seg)
@@ -289,6 +290,8 @@ class CleanAudio(object):
                 audio = AudioSegment.from_mp3(ifile)
             elif ext == 'wav':
                 audio = AudioSegment.from_wav(ifile)
+            elif ext == 'ogg':
+                audio = AudioSegment.from_ogg(ifile)
             elif ext == '3gp':
                 print('Cannot convert .3pg. Ignoring ' + ifile)
                 continue
