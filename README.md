@@ -2,4 +2,7 @@
 ## https://github.com/tycho-lang/clean-audio
 Recording audio in anki (on mac at least) has a habit of putting bursts of static noise at the beginning and end of the recorded audio that are very distracting. It also has variable loudness depending on mic and vocal arrangement.  This will remove leading and trailing silence and noise bursts then normalize the remaining audio.
 
+This can also process your entire anki media collection and clean the audio of all newly added files.
+
+For detailed help type `python clean-audio.py -h`
 
